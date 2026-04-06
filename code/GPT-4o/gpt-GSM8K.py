@@ -204,5 +204,33 @@ for i in range(total):
         print(f"Processed {i+1}/{total} questions...")
 
 # Output accuracy
-accuracy = (correct_count / total) * 100
-print(f"✅ GPT-4o math solving accuracy: {accuracy:.2f}%")
+accuracy = (correct_count / successful_count) * 100 if successful_count > 0 else 0
+average_consistency = consistency_sum / successful_count if successful_count > 0 else 0
+
+summary = {
+    "model": "gpt-4o",
+    "dataset": "GSM8K",
+    "total_requested": total,
+    "total_actual": len(train_data),
+    "sampling_method": "fixed_random_subset",
+    "random_seed": RANDOM_SEED,
+    "answer_only_prompt": True,
+    "K": K,
+    "max_retries": MAX_RETRIES,
+    "timeout_seconds":REQUEST_TIMEOUT,
+    "successful_count": successful_count,
+    "failed_count": len(failed_cases),
+    "accuracy_percent": round(accuracy,2),
+    "average_consistency": round(average_consistency,4),
+    "correct_count": correct_count
+}
+
+save_jsonl(OUTPUT_DIR / "gsm8k_gpt40_results.jsonl", results)
+save_jsonl(OUTPUT_DIR / "gsm8k_gpt40_results.jsonl", failed_case)
+
+with open(OUTPUT_DIR / "gsm8k_gpt40_results.jsonl", "w", encoding="utf-8") as f:
+    print(f"✅ GPT-4o math solving accuracy: {accuracy:.2f}%")
+    print(f"✅ Average consistency (K={K}): {average_consistency: .4f}")
+    print(f"⚠️ Failed cases: {len(failed_cases)}")
+
+
