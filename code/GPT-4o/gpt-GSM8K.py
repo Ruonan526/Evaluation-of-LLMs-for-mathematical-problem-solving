@@ -51,7 +51,7 @@ def sample_data(data, total, seed=42):
 
     random.seed(seed)
     indices = sorted(random.sample(range(len(data)), total))
-    sample_data = [data[i] for i in indices]
+    sampled_data = [data[i] for i in indices]
     return sampled_data, indices
 
 def clean_number(num_str):
@@ -74,42 +74,43 @@ def extract_numeric_answer(text):
 
 def solve_math_problem(question):
     """ Ask GPT-4o to return only the final numeric answer (no units, commas, percent signs, or extra zeros) """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",  # Change model
-            messages=[
-                {
-                    "role": "system", 
-                    "content": "You are a math expert. Provide only the numeric answer with no explanation, no units, no commas, no percent signs, and no additional text."
-                },
-                {"role": "user", "content": question}
-            ],
-            timeout=REQUEST_TIMEOUT
-        )
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",  # Change model
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "You are a math expert. Provide only the numeric answer with no explanation, no units, no commas, no percent signs, and no additional text."
+                    },
+                    {"role": "user", "content": question}
+                ],
+                timeout=REQUEST_TIMEOUT
+            )
        
-        gpt_answer = response.choices[0].message.content.strip()
+            gpt_answer = response.choices[0].message.content.strip()
 
         # 🔹 Keep only the numeric part of GPT-4o's response, remove units, commas, percent signs, and extra zeros
-        numbers = re.findall(r"-?\d+\.?\d*", gpt_answer)  # Extract numbers
-        return {
-            "success": True,
-            "raw_output": gpt_answer,
-            "parsed_answer": clean_number(numbers[-1]) if numbers else gpt_answer  # Format result
-            "error_message": None,
-            "attempt_used": attempt
-        }
-
-    except Exception as e:
-        if attempt < MAX_RETRIES:
-            time.sleep(RETRY_WAIT_SECONDS)
-        else:
+            numbers = re.findall(r"-?\d+\.?\d*", gpt_answer)  # Extract numbers
             return {
-                "success": False,
-                "raw_output": None,
-                "parsed_answer": None,
-                "error_message": str(e),
+                "success": True,
+                "raw_output": gpt_answer,
+                "parsed_answer": clean_number(numbers[-1]) if numbers else gpt_answer,  # Format result
+                "error_message": None,
                 "attempt_used": attempt
             }
+
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_WAIT_SECONDS)
+            else:
+                return {
+                    "success": False,
+                    "raw_output": None,
+                    "parsed_answer": None,
+                    "error_message": str(e),
+                    "attempt_used": attempt
+                }
 
 def check_answer(gpt_answer, correct_answer):
     """ Compare GPT's answer with the ground truth (strip units, commas, percent signs, and extra zeros) """
@@ -120,7 +121,7 @@ def majority_answer(answer_list):
     valid_answers = [a for a in answer_list if a is not None]
     if not valid_answers:
         return None
-    return Counter(valid_answers).most_commmon(1)[0][0]
+    return Counter(valid_answers).most_common(1)[0][0]
 
 def compute_consistency(answer_list):
     valid_answers = [a for a in answer_list if a is not None]
@@ -172,11 +173,11 @@ for i in range(total):
         successful_count += 1
         consistency_sum += consistency
         if is_correct:
-            correct_coun += 1
+            correct_count += 1
         else:
             print(f"❌ Question {i+1} incorrect")
             print(f"   ✅ Correct answer: {extract_numeric_answer(correct_answer)}")
-            print(f"   ❌ GPT answer: {gpt_answer}\n")
+            print(f"   ❌ GPT answer: {final_answer}\n")
     else:
         failed_count += 1
 
@@ -187,7 +188,7 @@ for i in range(total):
             "error_messages": error_messages
         })
 
-    result.append({
+    results.append({
         "index": i + 1,
         "question": sample_question,
         "correct_answer_raw": correct_answer,
@@ -225,12 +226,14 @@ summary = {
     "correct_count": correct_count
 }
 
-save_jsonl(OUTPUT_DIR / "gsm8k_gpt40_results.jsonl", results)
-save_jsonl(OUTPUT_DIR / "gsm8k_gpt40_results.jsonl", failed_case)
+save_jsonl(OUTPUT_DIR / "gsm8k_gpt4o_results.jsonl", results)
+save_jsonl(OUTPUT_DIR / "gsm8k_gpt4o_failed_cases.jsonl", failed_cases)
 
-with open(OUTPUT_DIR / "gsm8k_gpt40_results.jsonl", "w", encoding="utf-8") as f:
-    print(f"✅ GPT-4o math solving accuracy: {accuracy:.2f}%")
-    print(f"✅ Average consistency (K={K}): {average_consistency: .4f}")
-    print(f"⚠️ Failed cases: {len(failed_cases)}")
+with open(OUTPUT_DIR / "gsm8k_gpt4o_summary.json", "w", encoding="utf-8") as f:
+    json.dump(summary, f, ensure_ascii=False, indent=2)
+    
+print(f"✅ GPT-4o math solving accuracy: {accuracy:.2f}%")
+print(f"✅ Average consistency (K={K}): {average_consistency: .4f}")
+print(f"⚠️ Failed cases: {len(failed_cases)}")
 
 
